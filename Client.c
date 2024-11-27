@@ -40,7 +40,7 @@ int main() {
 
     // 서버 주소 설정
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr("10.20.0.90"); // 로컬 서버
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 로컬 서버
     server_addr.sin_port = htons(PORT);
 
     // 서버에 연결
