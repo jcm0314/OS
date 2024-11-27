@@ -11,7 +11,7 @@
 
 #define PORT 8080
 #define MAX_CLIENTS 3
-#define SHM_KEY 5678
+#define SHM_KEY 1234 // 공유 메모리 키를 변경
 
 // 클라이언트와 서버 간의 데이터 구조체
 struct client_data {
@@ -36,97 +36,12 @@ struct shared_memory {
     int client_sock; // 클라이언트 소켓 추가
 };
 
-// 프로듀서 함수
-void* producer(void* arg) {
-    int client_sock = *(int*)arg;
-    free(arg);
-    
-    int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
-    struct shared_memory* shm = shmat(shm_id, NULL, 0);
-    
-    if(shm == (void*)-1) {
-        perror("shmat failed");
-        close(client_sock);
-        return NULL;
-    }
-
-    shm->client_sock = client_sock; // 클라이언트 소켓 저장
-
-    while (1) {
-        // 클라이언트로부터 데이터 수신
-        if (recv(client_sock, &shm->client, sizeof(shm->client), 0) <= 0) {
-            perror("recv failed");
-            break;
-        }
-
-        // 종료 조건
-        if (shm->client.left_num == 0 && shm->client.right_num == 0 && shm->client.op == '$') {
-            break;
-        }
-
-        // 데이터 준비 상태 설정
-        shm->ready = 1;
-    }
-
-    close(client_sock);
-    shmdt(shm);
-    return NULL;
-}
-
-// 컨슈머 함수
-void* consumer(void* arg) {
-    int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
-    struct shared_memory* shm = shmat(shm_id, NULL, 0);
-
-    if(shm == (void*)-1) {
-        perror("shmat failed");
-        return NULL;
-    }
-
-    while (1) {
-        // 데이터가 준비될 때까지 대기
-        while (!shm->ready) {
-            usleep(100); // CPU 사용량을 줄이기 위해 대기
-        }
-
-        // 계산 수행
-        if (shm->client.op == '+') {
-            shm->result.result = shm->client.left_num + shm->client.right_num;
-        } else if (shm->client.op == '-') {
-            shm->result.result = shm->client.left_num - shm->client.right_num;
-        } else if (shm->client.op == 'x') {
-            shm->result.result = shm->client.left_num * shm->client.right_num;
-        } else if (shm->client.op == '/') {
-            shm->result.result = (shm->client.right_num != 0) ? (shm->client.left_num / shm->client.right_num) : 0;
-        }
-
-        // min, max 업데이트
-        if (shm->result.result < shm->result.min || shm->result.min == 0) {
-            shm->result.min = shm->result.result;
-        }
-        if (shm->result.result > shm->result.max) {
-            shm->result.max = shm->result.result;
-        }
-
-        // 현재 시간 가져오기
-        time_t rawtime = time(NULL);
-        shm->result.timestamp = *localtime(&rawtime);
-
-        // 클라이언트 소켓으로 결과 전송
-        send(shm->client_sock, &shm->result, sizeof(shm->result), 0);
-
-        // 데이터 준비 상태 초기화
-        shm->ready = 0;
-    }
-
-    shmdt(shm);
-    return NULL;
-}
-
 int main() {
     int server_sock, client_sock;
     struct sockaddr_in server_addr, client_addr;
-    pthread_t producer_tid, consumer_tid;
+
+    // 공유 메모리 크기 출력
+    printf("Size of shared_memory: %lu bytes\n", sizeof(struct shared_memory));
 
     // 공유 메모리 초기화
     int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
@@ -176,10 +91,7 @@ int main() {
         }
 
         // 프로듀서와 컨슈머 스레드 생성
-        int* pclient = malloc(sizeof(int));
-        *pclient = client_sock;
-        pthread_create(&producer_tid, NULL, producer, pclient);
-        pthread_create(&consumer_tid, NULL, consumer, NULL);
+        // 스레드 생성 및 처리 코드 추가 필요
     }
 
     // 자원 정리
