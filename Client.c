@@ -5,22 +5,21 @@
 #include <arpa/inet.h>
 #include <time.h>
 
-#define PORT 8080 // 서버와 동일한 포트 번호로 설정
+#define PORT 8080
 
-// 클라이언트와 서버 간의 데이터 구조체
+// 클라이언트 요청 구조체
 struct client_data {
     int left_num;
     int right_num;
-    char op;
-    char student_info[50]; // OSNW2024, 학번, 이름 등의 고정 문자열
+    char op; // 연산자
 };
 
+// 서버 응답 구조체
 struct result_data {
-    int result;
-    int min; // 서버에서 계산된 min
-    int max; // 최대값
-    struct tm timestamp; // <time.h>에서 정의된 구조체
-    struct sockaddr_in server_ip;
+    int result; // 결과
+    int min;    // 최소값
+    int max;    // 최대값
+    struct tm timestamp; // 시간 정보
 };
 
 int main() {
@@ -38,7 +37,7 @@ int main() {
 
     // 서버 주소 설정
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr("10.20.0.90"); // 서버 IP 주소
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 로컬 서버
     server_addr.sin_port = htons(PORT);
 
     // 서버에 연결
@@ -48,34 +47,21 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // 학생 정보를 저장
-    strcpy(data.student_info, "OSNW2024"); // 고정된 학생 정보
+    // 초기값 설정
+    data.left_num = 2; // 예시 값
+    data.right_num = 2; // 예시 값
+    data.op = 'x'; // 예시 연산자
 
     while (1) {
-        // 사용자 입력 받기
-        printf("Enter two integers, operator (e.g., +, -, x, /): ");
-        scanf("%d %d %c", &data.left_num, &data.right_num, &data.op);
-        
-        if (data.left_num == 0 && data.right_num == 0 && data.op == '$') {
-            // 종료 조건
-            data.left_num = 0;
-            data.right_num = 0;
-            data.op = '$';
-            send(sock, &data, sizeof(data), 0);
-            break;
-        }
-
         // 클라이언트 데이터 전송
         send(sock, &data, sizeof(data), 0);
 
         // 서버로부터 결과 수신
         recv(sock, &result, sizeof(result), 0);
 
-        // 결과 출력 형식 수정
-        printf("%d %c %d = %d, %s, min=%d, max=%d, Time=%s from %s\n",
-            data.left_num, data.op, data.right_num, result.result,
-            data.student_info, result.min, result.max,
-            asctime(&result.timestamp), inet_ntoa(result.server_ip.sin_addr));
+        // 결과 출력
+        printf("Received from server: Result = %d, Min = %d, Max = %d, Time = %s",
+               result.result, result.min, result.max, asctime(&result.timestamp));
 
         // 10초 대기
         sleep(10);
