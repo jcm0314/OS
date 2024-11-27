@@ -12,7 +12,6 @@
 #define PORT 8080
 #define MAX_CLIENTS 3
 #define SHM_KEY 5678
-#define SEM_KEY 1234
 
 // 클라이언트와 서버 간의 데이터 구조체
 struct client_data {
@@ -27,7 +26,6 @@ struct result_data {
     int min; // 서버에서 계산된 min
     int max; // 최대값
     struct tm timestamp; // <time.h>에서 정의된 구조체
-    struct sockaddr_in server_ip;
 };
 
 // 공유 메모리 구조체
@@ -42,9 +40,15 @@ struct shared_memory {
 void* producer(void* arg) {
     int client_sock = *(int*)arg;
     free(arg);
-
+    
     int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
     struct shared_memory* shm = shmat(shm_id, NULL, 0);
+    
+    if(shm == (void*)-1) {
+        perror("shmat failed");
+        close(client_sock);
+        return NULL;
+    }
 
     shm->client_sock = client_sock; // 클라이언트 소켓 저장
 
@@ -74,6 +78,11 @@ void* consumer(void* arg) {
     int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
     struct shared_memory* shm = shmat(shm_id, NULL, 0);
 
+    if(shm == (void*)-1) {
+        perror("shmat failed");
+        return NULL;
+    }
+
     while (1) {
         // 데이터가 준비될 때까지 대기
         while (!shm->ready) {
@@ -83,14 +92,11 @@ void* consumer(void* arg) {
         // 계산 수행
         if (shm->client.op == '+') {
             shm->result.result = shm->client.left_num + shm->client.right_num;
-        }
-        else if (shm->client.op == '-') {
+        } else if (shm->client.op == '-') {
             shm->result.result = shm->client.left_num - shm->client.right_num;
-        }
-        else if (shm->client.op == 'x') {
+        } else if (shm->client.op == 'x') {
             shm->result.result = shm->client.left_num * shm->client.right_num;
-        }
-        else if (shm->client.op == '/') {
+        } else if (shm->client.op == '/') {
             shm->result.result = (shm->client.right_num != 0) ? (shm->client.left_num / shm->client.right_num) : 0;
         }
 
@@ -125,6 +131,10 @@ int main() {
     // 공유 메모리 초기화
     int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
     struct shared_memory* shm = shmat(shm_id, NULL, 0);
+    if(shm == (void*)-1) {
+        perror("shmat failed");
+        exit(EXIT_FAILURE);
+    }
     shm->ready = 0; // 초기 상태
 
     // 소켓 생성
