@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 #include <time.h>
 
-#define PORT 8080
+#define PORT 8081 // 서버와 동일한 포트 번호로 설정
 
 // 클라이언트와 서버 간의 데이터 구조체
 struct client_data {
@@ -49,21 +49,18 @@ int main() {
     }
 
     // 학생 정보를 저장
-    strcpy(data.student_info, "OSNW2024, 학번, 이름");
+    strcpy(data.student_info, "OSNW2024"); // 고정된 학생 정보
 
     while (1) {
         // 사용자 입력 받기
         printf("Enter two integers, operator (e.g., +, -, x, /): ");
-        if (scanf("%d %d %c", &data.left_num, &data.right_num, &data.op) != 3) {
-            printf("Invalid input. Please enter two integers followed by an operator.\n");
-            // 입력 버퍼 정리
-            while (getchar() != '\n'); 
-            continue; // 잘못된 입력 시 반복
-        }
-
-        // 종료 조건
+        scanf("%d %d %c", &data.left_num, &data.right_num, &data.op);
+        
         if (data.left_num == 0 && data.right_num == 0 && data.op == '$') {
             // 종료 조건
+            data.left_num = 0;
+            data.right_num = 0;
+            data.op = '$';
             send(sock, &data, sizeof(data), 0);
             break;
         }
@@ -79,6 +76,9 @@ int main() {
             data.left_num, data.op, data.right_num, result.result,
             data.student_info, result.min, result.max,
             asctime(&result.timestamp), inet_ntoa(result.server_ip.sin_addr));
+
+        // 10초 대기
+        sleep(10);
     }
 
     close(sock);
