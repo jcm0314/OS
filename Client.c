@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 #include <time.h>
 
-#define PORT 8081 // 서버와 동일한 포트 번호로 설정
+#define PORT 8080 // 서버와 동일한 포트 번호로 설정
 
 // 클라이언트와 서버 간의 데이터 구조체
 struct client_data {
@@ -38,7 +38,7 @@ int main() {
 
     // 서버 주소 설정
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 서버 IP 주소
+    server_addr.sin_addr.s_addr = inet_addr("10.20.0.90"); // 서버 IP 주소
     server_addr.sin_port = htons(PORT);
 
     // 서버에 연결
