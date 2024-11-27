@@ -130,11 +130,17 @@ int main() {
 
     // 공유 메모리 초기화
     int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
+    if (shm_id < 0) {
+        perror("shmget failed");
+        exit(EXIT_FAILURE);
+    }
+
     struct shared_memory* shm = shmat(shm_id, NULL, 0);
-    if(shm == (void*)-1) {
+    if (shm == (void*)-1) {
         perror("shmat failed");
         exit(EXIT_FAILURE);
     }
+    
     shm->ready = 0; // 초기 상태
 
     // 소켓 생성
