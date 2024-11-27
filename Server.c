@@ -3,60 +3,29 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
 #include <time.h>
-#include <pthread.h>
-#include <limits.h>
 
 #define PORT 8080
-#define MAX_CLIENTS 3
-#define SHM_KEY 1234 // 공유 메모리 키를 변경
 
-// 클라이언트와 서버 간의 데이터 구조체
+// 클라이언트 요청 구조체
 struct client_data {
     int left_num;
     int right_num;
-    char op;
-    char student_info[50]; // OSNW2024, 학번, 이름 등의 고정 문자열
+    char op; // 연산자
 };
 
+// 서버 응답 구조체
 struct result_data {
-    int result;
-    int min; // 서버에서 계산된 min
-    int max; // 최대값
-    struct tm timestamp; // <time.h>에서 정의된 구조체
-};
-
-// 공유 메모리 구조체
-struct shared_memory {
-    struct client_data client;
-    struct result_data result;
-    int ready; // 데이터 준비 상태 플래그
-    int client_sock; // 클라이언트 소켓 추가
+    int result; // 결과
+    struct tm timestamp; // 시간 정보
 };
 
 int main() {
     int server_sock, client_sock;
     struct sockaddr_in server_addr, client_addr;
-
-    // 공유 메모리 크기 출력
-    printf("Size of shared_memory: %lu bytes\n", sizeof(struct shared_memory));
-
-    // 공유 메모리 초기화
-    int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
-    if (shm_id < 0) {
-        perror("shmget failed");
-        exit(EXIT_FAILURE);
-    }
-
-    struct shared_memory* shm = shmat(shm_id, NULL, 0);
-    if (shm == (void*)-1) {
-        perror("shmat failed");
-        exit(EXIT_FAILURE);
-    }
-    
-    shm->ready = 0; // 초기 상태
+    socklen_t client_len = sizeof(client_addr);
+    struct client_data data;
+    struct result_data result;
 
     // 소켓 생성
     server_sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -78,11 +47,10 @@ int main() {
     }
 
     // 리스닝
-    listen(server_sock, MAX_CLIENTS);
+    listen(server_sock, 5);
     printf("Server is listening on port %d\n", PORT);
 
     while (1) {
-        socklen_t client_len = sizeof(client_addr);
         // 클라이언트 연결 수락
         client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &client_len);
         if (client_sock < 0) {
@@ -90,12 +58,42 @@ int main() {
             continue;
         }
 
-        // 프로듀서와 컨슈머 스레드 생성
-        // 스레드 생성 및 처리 코드 추가 필요
+        // 클라이언트 데이터 수신
+        if (recv(client_sock, &data, sizeof(data), 0) <= 0) {
+            perror("recv failed");
+            close(client_sock);
+            continue;
+        }
+
+        // 계산 수행
+        switch (data.op) {
+            case '+':
+                result.result = data.left_num + data.right_num;
+                break;
+            case '-':
+                result.result = data.left_num - data.right_num;
+                break;
+            case 'x':
+                result.result = data.left_num * data.right_num;
+                break;
+            case '/':
+                result.result = (data.right_num != 0) ? (data.left_num / data.right_num) : 0;
+                break;
+            default:
+                result.result = 0; // 잘못된 연산자 처리
+                break;
+        }
+
+        // 현재 시간 가져오기
+        time_t rawtime = time(NULL);
+        result.timestamp = *localtime(&rawtime);
+
+        // 클라이언트에 결과 전송
+        send(client_sock, &result, sizeof(result), 0);
+        close(client_sock);
     }
 
     // 자원 정리
     close(server_sock);
-    shmdt(shm);
     return 0;
 }
