@@ -3,15 +3,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
 #include <time.h>
-#include <pthread.h>
-#include <limits.h>
 
 #define PORT 8080
-#define MAX_CLIENTS 3
-#define SHM_KEY 1234 // 공유 메모리 키를 변경
 
 // 클라이언트와 서버 간의 데이터 구조체
 struct client_data {
@@ -26,76 +20,67 @@ struct result_data {
     int min; // 서버에서 계산된 min
     int max; // 최대값
     struct tm timestamp; // <time.h>에서 정의된 구조체
-};
-
-// 공유 메모리 구조체
-struct shared_memory {
-    struct client_data client;
-    struct result_data result;
-    int ready; // 데이터 준비 상태 플래그
-    int client_sock; // 클라이언트 소켓 추가
+    struct sockaddr_in server_ip;
 };
 
 int main() {
-    int server_sock, client_sock;
-    struct sockaddr_in server_addr, client_addr;
-
-    // 공유 메모리 크기 출력
-    printf("Size of shared_memory: %lu bytes\n", sizeof(struct shared_memory));
-
-    // 공유 메모리 초기화
-    int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
-    if (shm_id < 0) {
-        perror("shmget failed");
-        exit(EXIT_FAILURE);
-    }
-
-    struct shared_memory* shm = shmat(shm_id, NULL, 0);
-    if (shm == (void*)-1) {
-        perror("shmat failed");
-        exit(EXIT_FAILURE);
-    }
-    
-    shm->ready = 0; // 초기 상태
+    int sock;
+    struct sockaddr_in server_addr;
+    struct client_data data;
+    struct result_data result;
 
     // 소켓 생성
-    server_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_sock < 0) {
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
 
     // 서버 주소 설정
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 서버 IP 주소
     server_addr.sin_port = htons(PORT);
 
-    // 바인드
-    if (bind(server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("bind failed");
-        close(server_sock);
+    // 서버에 연결
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("connection failed");
+        close(sock);
         exit(EXIT_FAILURE);
     }
 
-    // 리스닝
-    listen(server_sock, MAX_CLIENTS);
-    printf("Server is listening on port %d\n", PORT);
+    // 학생 정보를 저장
+    strcpy(data.student_info, "OSNW2024, 학번, 이름");
 
     while (1) {
-        socklen_t client_len = sizeof(client_addr);
-        // 클라이언트 연결 수락
-        client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &client_len);
-        if (client_sock < 0) {
-            perror("accept failed");
-            continue;
+        // 사용자 입력 받기
+        printf("Enter two integers, operator (e.g., +, -, x, /): ");
+        if (scanf("%d %d %c", &data.left_num, &data.right_num, &data.op) != 3) {
+            printf("Invalid input. Please enter two integers followed by an operator.\n");
+            // 입력 버퍼 정리
+            while (getchar() != '\n'); 
+            continue; // 잘못된 입력 시 반복
         }
 
-        // 프로듀서와 컨슈머 스레드 생성
-        // 스레드 생성 및 처리 코드 추가 필요
+        // 종료 조건
+        if (data.left_num == 0 && data.right_num == 0 && data.op == '$') {
+            // 종료 조건
+            send(sock, &data, sizeof(data), 0);
+            break;
+        }
+
+        // 클라이언트 데이터 전송
+        send(sock, &data, sizeof(data), 0);
+
+        // 서버로부터 결과 수신
+        recv(sock, &result, sizeof(result), 0);
+
+        // 결과 출력 형식 수정
+        printf("%d %c %d = %d, %s, min=%d, max=%d, Time=%s from %s\n",
+            data.left_num, data.op, data.right_num, result.result,
+            data.student_info, result.min, result.max,
+            asctime(&result.timestamp), inet_ntoa(result.server_ip.sin_addr));
     }
 
-    // 자원 정리
-    close(server_sock);
-    shmdt(shm);
+    close(sock);
     return 0;
 }
