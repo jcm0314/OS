@@ -50,12 +50,35 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // 입력 반복
+    // 사용자 입력 받기
+    printf("Enter two integers, operator (e.g., +, -, x, /), and a string (or '0 0 $ quit' to exit): ");
+    scanf("%d %d %c %s", &data.left_num, &data.right_num, &data.op, data.student_info);
+
+    // 종료 조건 체크
+    if (data.left_num == 0 && data.right_num == 0 && data.op == '$') {
+        send(sock, &data, sizeof(data), 0); // 종료 메시지 전송
+        close(sock);
+        return 0;
+    }
+
+    // 클라이언트 데이터 전송
+    send(sock, &data, sizeof(data), 0);
+
+    // 10초마다 결과를 수신
     while (1) {
+        // 서버로부터 결과 수신
+        recv(sock, &result, sizeof(result), 0);
+        
+        // 결과 출력
+        printf("Received from server: Result = %d, Min = %d, Max = %d, Time = %s, from %s\n",
+               result.result, result.min, result.max, asctime(&result.timestamp),
+               inet_ntoa(result.client_ip.sin_addr));
+
+        // 사용자로부터 새로운 입력 받기
         printf("Enter two integers, operator (e.g., +, -, x, /), and a string (or '0 0 $ quit' to exit): ");
         scanf("%d %d %c %s", &data.left_num, &data.right_num, &data.op, data.student_info);
 
-        // 종료 조건
+        // 종료 조건 체크
         if (data.left_num == 0 && data.right_num == 0 && data.op == '$') {
             send(sock, &data, sizeof(data), 0); // 종료 메시지 전송
             break;
@@ -64,13 +87,8 @@ int main() {
         // 클라이언트 데이터 전송
         send(sock, &data, sizeof(data), 0);
 
-        // 서버로부터 결과 수신
-        recv(sock, &result, sizeof(result), 0);
-        
-        // 결과 출력
-        printf("Received from server: Result = %d, Min = %d, Max = %d, Time = %s, from %s\n",
-               result.result, result.min, result.max, asctime(&result.timestamp),
-               inet_ntoa(result.client_ip.sin_addr));
+        // 10초 대기
+        sleep(10);
     }
 
     close(sock);
