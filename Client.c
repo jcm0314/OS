@@ -40,7 +40,7 @@ int main() {
 
     // 서버 주소 설정
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr("10.20.0.90"); // 로컬 서버
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // 로컬 서버
     server_addr.sin_port = htons(PORT);
 
     // 서버에 연결
@@ -51,7 +51,7 @@ int main() {
     }
 
     // 사용자 입력 받기
-    printf("Enter two integers, operator (e.g., +, -, x, /), and a string (or '0 0 $ quit' to exit): ");
+    printf("Enter two integers, operator (e.g., +, -, x, /), and a string: ");
     scanf("%d %d %c %s", &data.left_num, &data.right_num, &data.op, data.student_info);
 
     // 종료 조건 체크
@@ -75,8 +75,8 @@ int main() {
                inet_ntoa(result.client_ip.sin_addr));
 
         // 사용자로부터 새로운 입력 받기
-        printf("Enter two integers, operator (e.g., +, -, x, /), and a string (or '0 0 $ quit' to exit): ");
-        scanf("%d %d %c %s", &data.left_num, &data.right_num, &data.op, data.student_info);
+        printf("Enter two integers, operator (e.g., +, -, x, /): ");
+        scanf("%d %d %c", &data.left_num, &data.right_num, &data.op);
 
         // 종료 조건 체크
         if (data.left_num == 0 && data.right_num == 0 && data.op == '$') {
