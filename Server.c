@@ -7,6 +7,7 @@
 #include <sys/shm.h>
 #include <time.h>
 #include <pthread.h>
+#include <limits.h> // 추가된 헤더 파일
 
 #define PORT 8080
 #define MAX_STRING_LENGTH 50
