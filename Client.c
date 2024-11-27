@@ -3,84 +3,99 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <time.h>
+#include <pthread.h>
+#include <limits.h>
 
 #define PORT 8080
+#define MAX_CLIENTS 3
+#define SHM_KEY 1234 // ê³µìœ  ë©”ëª¨ë¦¬ í‚¤ë¥¼ ë³€ê²½
 
-// Å¬¶óÀÌ¾ğÆ®¿Í ¼­¹ö °£ÀÇ µ¥ÀÌÅÍ ±¸Á¶Ã¼
+// í´ë¼ì´ì–¸íŠ¸ì™€ ì„œë²„ ê°„ì˜ ë°ì´í„° êµ¬ì¡°ì²´
 struct client_data {
     int left_num;
     int right_num;
     char op;
-    char student_info[50]; // OSNW2024, ÇĞ¹ø, ÀÌ¸§ µîÀÇ °íÁ¤ ¹®ÀÚ¿­
+    char student_info[50]; // OSNW2024, í•™ë²ˆ, ì´ë¦„ ë“±ì˜ ê³ ì • ë¬¸ìì—´
 };
 
 struct result_data {
     int result;
-    int min; // ¼­¹ö¿¡¼­ °è»êµÈ min
-    int max; // ÃÖ´ë°ª
-    struct tm timestamp; // <time.h>¿¡¼­ Á¤ÀÇµÈ ±¸Á¶Ã¼
-    struct sockaddr_in server_ip;
+    int min; // ì„œë²„ì—ì„œ ê³„ì‚°ëœ min
+    int max; // ìµœëŒ€ê°’
+    struct tm timestamp; // <time.h>ì—ì„œ ì •ì˜ëœ êµ¬ì¡°ì²´
+};
+
+// ê³µìœ  ë©”ëª¨ë¦¬ êµ¬ì¡°ì²´
+struct shared_memory {
+    struct client_data client;
+    struct result_data result;
+    int ready; // ë°ì´í„° ì¤€ë¹„ ìƒíƒœ í”Œë˜ê·¸
+    int client_sock; // í´ë¼ì´ì–¸íŠ¸ ì†Œì¼“ ì¶”ê°€
 };
 
 int main() {
-    int sock;
-    struct sockaddr_in server_addr;
-    struct client_data data;
-    struct result_data result;
+    int server_sock, client_sock;
+    struct sockaddr_in server_addr, client_addr;
 
-    // ¼ÒÄÏ »ı¼º
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
+    // ê³µìœ  ë©”ëª¨ë¦¬ í¬ê¸° ì¶œë ¥
+    printf("Size of shared_memory: %lu bytes\n", sizeof(struct shared_memory));
+
+    // ê³µìœ  ë©”ëª¨ë¦¬ ì´ˆê¸°í™”
+    int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
+    if (shm_id < 0) {
+        perror("shmget failed");
+        exit(EXIT_FAILURE);
+    }
+
+    struct shared_memory* shm = shmat(shm_id, NULL, 0);
+    if (shm == (void*)-1) {
+        perror("shmat failed");
+        exit(EXIT_FAILURE);
+    }
+    
+    shm->ready = 0; // ì´ˆê¸° ìƒíƒœ
+
+    // ì†Œì¼“ ìƒì„±
+    server_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_sock < 0) {
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
 
-    // ¼­¹ö ÁÖ¼Ò ¼³Á¤
+    // ì„œë²„ ì£¼ì†Œ ì„¤ì •
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr("10.20.0.90"); // ¼­¹ö IP ÁÖ¼Ò
+    server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(PORT);
 
-    // ¼­¹ö¿¡ ¿¬°á
-    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("connection failed");
-        close(sock);
+    // ë°”ì¸ë“œ
+    if (bind(server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("bind failed");
+        close(server_sock);
         exit(EXIT_FAILURE);
     }
 
-    // ÇĞ»ı Á¤º¸¸¦ ÀúÀå
-    strcpy(data.student_info, "OSNW2024, ÇĞ¹ø, ÀÌ¸§");
+    // ë¦¬ìŠ¤ë‹
+    listen(server_sock, MAX_CLIENTS);
+    printf("Server is listening on port %d\n", PORT);
 
     while (1) {
-        // »ç¿ëÀÚ ÀÔ·Â ¹Ş±â
-        printf("Enter two integers, operator (e.g., +, -, x, /): ");
-        if (scanf("%d %d %c", &data.left_num, &data.right_num, &data.op) != 3) {
-            printf("Invalid input. Please enter two integers followed by an operator.\n");
-            // ÀÔ·Â ¹öÆÛ Á¤¸®
-            while (getchar() != '\n');
-            continue; // Àß¸øµÈ ÀÔ·Â ½Ã ¹İº¹
+        socklen_t client_len = sizeof(client_addr);
+        // í´ë¼ì´ì–¸íŠ¸ ì—°ê²° ìˆ˜ë½
+        client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &client_len);
+        if (client_sock < 0) {
+            perror("accept failed");
+            continue;
         }
 
-        // Á¾·á Á¶°Ç
-        if (data.left_num == 0 && data.right_num == 0 && data.op == '$') {
-            // Á¾·á Á¶°Ç
-            send(sock, &data, sizeof(data), 0);
-            break;
-        }
-
-        // Å¬¶óÀÌ¾ğÆ® µ¥ÀÌÅÍ Àü¼Û
-        send(sock, &data, sizeof(data), 0);
-
-        // ¼­¹ö·ÎºÎÅÍ °á°ú ¼ö½Å
-        recv(sock, &result, sizeof(result), 0);
-
-        // °á°ú Ãâ·Â Çü½Ä ¼öÁ¤
-        printf("%d %c %d = %d, %s, min=%d, max=%d, Time=%s from %s\n",
-            data.left_num, data.op, data.right_num, result.result,
-            data.student_info, result.min, result.max,
-            asctime(&result.timestamp), inet_ntoa(result.server_ip.sin_addr));
+        // í”„ë¡œë“€ì„œì™€ ì»¨ìŠˆë¨¸ ìŠ¤ë ˆë“œ ìƒì„±
+        // ìŠ¤ë ˆë“œ ìƒì„± ë° ì²˜ë¦¬ ì½”ë“œ ì¶”ê°€ í•„ìš”
     }
 
-    close(sock);
+    // ìì› ì •ë¦¬
+    close(server_sock);
+    shmdt(shm);
     return 0;
 }
