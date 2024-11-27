@@ -7,7 +7,7 @@
 #include <sys/shm.h>
 #include <time.h>
 #include <pthread.h>
-#include <limits.h> // 추가된 헤더 파일
+#include <limits.h>
 
 #define PORT 8080
 #define MAX_STRING_LENGTH 50
@@ -32,7 +32,6 @@ struct result_data {
 
 // 공유 메모리 구조체
 struct shared_memory {
-    struct client_data data;
     struct result_data result;
 };
 
@@ -40,40 +39,42 @@ void* handle_client(void* arg) {
     int client_sock = *(int*)arg;
     struct shared_memory* shm;
     int shm_id;
-    
+
     // 공유 메모리 생성
     shm_id = shmget(IPC_PRIVATE, sizeof(struct shared_memory), IPC_CREAT | 0666);
     shm = (struct shared_memory*)shmat(shm_id, NULL, 0);
-    
+
     // 초기값 설정
     shm->result.min = INT_MAX;
     shm->result.max = INT_MIN;
 
     while (1) {
+        struct client_data data;
+
         // 클라이언트 데이터 수신
-        if (recv(client_sock, &shm->data, sizeof(shm->data), 0) <= 0) {
+        if (recv(client_sock, &data, sizeof(data), 0) <= 0) {
             perror("recv failed");
             break;
         }
 
         // 종료 조건
-        if (shm->data.left_num == 0 && shm->data.right_num == 0 && shm->data.op == '$') {
+        if (data.left_num == 0 && data.right_num == 0 && data.op == '$') {
             break;
         }
 
         // 계산 수행
-        switch (shm->data.op) {
+        switch (data.op) {
             case '+':
-                shm->result.result = shm->data.left_num + shm->data.right_num;
+                shm->result.result = data.left_num + data.right_num;
                 break;
             case '-':
-                shm->result.result = shm->data.left_num - shm->data.right_num;
+                shm->result.result = data.left_num - data.right_num;
                 break;
             case 'x':
-                shm->result.result = shm->data.left_num * shm->data.right_num;
+                shm->result.result = data.left_num * data.right_num;
                 break;
             case '/':
-                shm->result.result = (shm->data.right_num != 0) ? (shm->data.left_num / shm->data.right_num) : 0;
+                shm->result.result = (data.right_num != 0) ? (data.left_num / data.right_num) : 0;
                 break;
             default:
                 shm->result.result = 0; // 잘못된 연산자 처리
