@@ -14,30 +14,31 @@
 #define SHM_KEY 5678
 #define SEM_KEY 1234
 
-// Å¬¶óÀÌ¾ğÆ®¿Í ¼­¹ö °£ÀÇ µ¥ÀÌÅÍ ±¸Á¶Ã¼
+// í´ë¼ì´ì–¸íŠ¸ì™€ ì„œë²„ ê°„ì˜ ë°ì´í„° êµ¬ì¡°ì²´
 struct client_data {
     int left_num;
     int right_num;
     char op;
-    char student_info[50]; // OSNW2024, ÇĞ¹ø, ÀÌ¸§ µîÀÇ °íÁ¤ ¹®ÀÚ¿­
+    char student_info[50]; // OSNW2024, í•™ë²ˆ, ì´ë¦„ ë“±ì˜ ê³ ì • ë¬¸ìì—´
 };
 
 struct result_data {
     int result;
-    int min;
-    int max;
-    struct tm timestamp;
+    int min; // ì„œë²„ì—ì„œ ê³„ì‚°ëœ min
+    int max; // ìµœëŒ€ê°’
+    struct tm timestamp; // <time.h>ì—ì„œ ì •ì˜ëœ êµ¬ì¡°ì²´
     struct sockaddr_in server_ip;
 };
 
-// °øÀ¯ ¸Ş¸ğ¸® ±¸Á¶Ã¼
+// ê³µìœ  ë©”ëª¨ë¦¬ êµ¬ì¡°ì²´
 struct shared_memory {
     struct client_data client;
     struct result_data result;
-    int ready; // µ¥ÀÌÅÍ ÁØºñ »óÅÂ ÇÃ·¡±×
+    int ready; // ë°ì´í„° ì¤€ë¹„ ìƒíƒœ í”Œë˜ê·¸
+    int client_sock; // í´ë¼ì´ì–¸íŠ¸ ì†Œì¼“ ì¶”ê°€
 };
 
-// ÇÁ·Îµà¼­ ÇÔ¼ö
+// í”„ë¡œë“€ì„œ í•¨ìˆ˜
 void* producer(void* arg) {
     int client_sock = *(int*)arg;
     free(arg);
@@ -45,19 +46,21 @@ void* producer(void* arg) {
     int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
     struct shared_memory* shm = shmat(shm_id, NULL, 0);
 
+    shm->client_sock = client_sock; // í´ë¼ì´ì–¸íŠ¸ ì†Œì¼“ ì €ì¥
+
     while (1) {
-        // Å¬¶óÀÌ¾ğÆ®·ÎºÎÅÍ µ¥ÀÌÅÍ ¼ö½Å
+        // í´ë¼ì´ì–¸íŠ¸ë¡œë¶€í„° ë°ì´í„° ìˆ˜ì‹ 
         if (recv(client_sock, &shm->client, sizeof(shm->client), 0) <= 0) {
             perror("recv failed");
             break;
         }
 
-        // Á¾·á Á¶°Ç
+        // ì¢…ë£Œ ì¡°ê±´
         if (shm->client.left_num == 0 && shm->client.right_num == 0 && shm->client.op == '$') {
             break;
         }
 
-        // µ¥ÀÌÅÍ ÁØºñ »óÅÂ ¼³Á¤
+        // ë°ì´í„° ì¤€ë¹„ ìƒíƒœ ì„¤ì •
         shm->ready = 1;
     }
 
@@ -66,18 +69,18 @@ void* producer(void* arg) {
     return NULL;
 }
 
-// ÄÁ½´¸Ó ÇÔ¼ö
+// ì»¨ìŠˆë¨¸ í•¨ìˆ˜
 void* consumer(void* arg) {
     int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
     struct shared_memory* shm = shmat(shm_id, NULL, 0);
 
     while (1) {
-        // µ¥ÀÌÅÍ°¡ ÁØºñµÉ ¶§±îÁö ´ë±â
+        // ë°ì´í„°ê°€ ì¤€ë¹„ë  ë•Œê¹Œì§€ ëŒ€ê¸°
         while (!shm->ready) {
-            usleep(100); // CPU »ç¿ë·®À» ÁÙÀÌ±â À§ÇØ ´ë±â
+            usleep(100); // CPU ì‚¬ìš©ëŸ‰ì„ ì¤„ì´ê¸° ìœ„í•´ ëŒ€ê¸°
         }
 
-        // °è»ê ¼öÇà
+        // ê³„ì‚° ìˆ˜í–‰
         if (shm->client.op == '+') {
             shm->result.result = shm->client.left_num + shm->client.right_num;
         }
@@ -91,26 +94,22 @@ void* consumer(void* arg) {
             shm->result.result = (shm->client.right_num != 0) ? (shm->client.left_num / shm->client.right_num) : 0;
         }
 
-        // min, max ¾÷µ¥ÀÌÆ®
-        if (shm->result.result < shm->result.min) {
+        // min, max ì—…ë°ì´íŠ¸
+        if (shm->result.result < shm->result.min || shm->result.min == 0) {
             shm->result.min = shm->result.result;
         }
         if (shm->result.result > shm->result.max) {
             shm->result.max = shm->result.result;
         }
 
-        // ÇöÀç ½Ã°£ °¡Á®¿À±â
+        // í˜„ì¬ ì‹œê°„ ê°€ì ¸ì˜¤ê¸°
         time_t rawtime = time(NULL);
         shm->result.timestamp = *localtime(&rawtime);
 
-        // ¼­¹öÀÇ IP ÁÖ¼Ò ¼³Á¤
-        socklen_t addr_len = sizeof(shm->result.server_ip);
-        getsockname(client_sock, (struct sockaddr*)&shm->result.server_ip, &addr_len);
+        // í´ë¼ì´ì–¸íŠ¸ ì†Œì¼“ìœ¼ë¡œ ê²°ê³¼ ì „ì†¡
+        send(shm->client_sock, &shm->result, sizeof(shm->result), 0);
 
-        // Å¬¶óÀÌ¾ğÆ®¿¡°Ô °á°ú Àü¼Û
-        send(client_sock, &shm->result, sizeof(shm->result), 0);
-
-        // µ¥ÀÌÅÍ ÁØºñ »óÅÂ ÃÊ±âÈ­
+        // ë°ì´í„° ì¤€ë¹„ ìƒíƒœ ì´ˆê¸°í™”
         shm->ready = 0;
     }
 
@@ -123,51 +122,51 @@ int main() {
     struct sockaddr_in server_addr, client_addr;
     pthread_t producer_tid, consumer_tid;
 
-    // °øÀ¯ ¸Ş¸ğ¸® ÃÊ±âÈ­
+    // ê³µìœ  ë©”ëª¨ë¦¬ ì´ˆê¸°í™”
     int shm_id = shmget(SHM_KEY, sizeof(struct shared_memory), IPC_CREAT | 0666);
     struct shared_memory* shm = shmat(shm_id, NULL, 0);
-    shm->ready = 0; // ÃÊ±â »óÅÂ
+    shm->ready = 0; // ì´ˆê¸° ìƒíƒœ
 
-    // ¼ÒÄÏ »ı¼º
+    // ì†Œì¼“ ìƒì„±
     server_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (server_sock < 0) {
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
 
-    // ¼­¹ö ÁÖ¼Ò ¼³Á¤
+    // ì„œë²„ ì£¼ì†Œ ì„¤ì •
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(PORT);
 
-    // ¹ÙÀÎµå
+    // ë°”ì¸ë“œ
     if (bind(server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("bind failed");
         close(server_sock);
         exit(EXIT_FAILURE);
     }
 
-    // ¸®½º´×
+    // ë¦¬ìŠ¤ë‹
     listen(server_sock, MAX_CLIENTS);
     printf("Server is listening on port %d\n", PORT);
 
     while (1) {
         socklen_t client_len = sizeof(client_addr);
-        // Å¬¶óÀÌ¾ğÆ® ¿¬°á ¼ö¶ô
+        // í´ë¼ì´ì–¸íŠ¸ ì—°ê²° ìˆ˜ë½
         client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &client_len);
         if (client_sock < 0) {
             perror("accept failed");
             continue;
         }
 
-        // ÇÁ·Îµà¼­¿Í ÄÁ½´¸Ó ½º·¹µå »ı¼º
+        // í”„ë¡œë“€ì„œì™€ ì»¨ìŠˆë¨¸ ìŠ¤ë ˆë“œ ìƒì„±
         int* pclient = malloc(sizeof(int));
         *pclient = client_sock;
         pthread_create(&producer_tid, NULL, producer, pclient);
         pthread_create(&consumer_tid, NULL, consumer, NULL);
     }
 
-    // ÀÚ¿ø Á¤¸®
+    // ìì› ì •ë¦¬
     close(server_sock);
     shmdt(shm);
     return 0;
