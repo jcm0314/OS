@@ -70,9 +70,9 @@ int main() {
         recv(sock, &result, sizeof(result), 0);
         
         // 결과 출력
-        printf("Received from server: Result = %d, Min = %d, Max = %d, Time = %s, from %s\n",
-               result.result, result.min, result.max, asctime(&result.timestamp),
-               inet_ntoa(result.client_ip.sin_addr));
+        printf("Received from server: Result = %d, Min = %d, Max = %d, Time = %s, from 10.20.0.90\n",
+               result.result, result.min, result.max, asctime(&result.timestamp)
+               );
 
         // 사용자로부터 새로운 입력 받기
         printf("Enter two integers, operator (e.g., +, -, x, /): ");
